@@ -40,7 +40,7 @@ function StatusBadge({ status }: { status: CallRecord["status"] }) {
   return (
     <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${config.className}`}>
       <Icon className={`w-3 h-3 ${status === "processing" ? "animate-spin" : ""}`} />
-      {config.label}
+      <span className="hidden sm:inline">{config.label}</span>
     </span>
   );
 }
@@ -122,8 +122,8 @@ function CallCard({ call, index }: { call: CallRecord; index: number }) {
         {index}
       </span>
 
-      {/* İkon */}
-      <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+      {/* İkon — mobilde gizle */}
+      <div className="w-8 h-8 rounded-xl bg-blue-50 items-center justify-center shrink-0 hidden sm:flex">
         <FileAudio className="w-4 h-4 text-[#0071E3]" />
       </div>
 
@@ -181,7 +181,7 @@ function CallCard({ call, index }: { call: CallRecord; index: number }) {
         </button>
       )}
 
-      {/* Yeni sekmede aç */}
+      {/* Yeni sekmede aç — mobilde gizle */}
       {isClickable && (
         <button
           onClick={(e) => {
@@ -189,7 +189,7 @@ function CallCard({ call, index }: { call: CallRecord; index: number }) {
             window.open(`/calls/${call.id}`, "_blank", "noopener,noreferrer");
           }}
           title="Yeni sekmede aç"
-          className="shrink-0 p-1.5 rounded-lg text-gray-300 hover:text-gray-500 transition-colors"
+          className="shrink-0 p-1.5 rounded-lg text-gray-300 hover:text-gray-500 transition-colors hidden sm:block"
         >
           <ExternalLink className="w-4 h-4" />
         </button>

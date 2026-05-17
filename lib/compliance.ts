@@ -67,6 +67,9 @@ export async function analyzeCompliance(transcript: string): Promise<ComplianceR
 
   const prompt = `Aşağıdaki çağrı merkezi görüşme transkriptini, verilen yönergeye göre değerlendir.
 
+ÖNEMLİ UYARI: Değerlendirmeni YALNIZCA ASİSTAN'IN söylediklerine dayandır.
+Borçlunun söyledikleri bağlam için okunur; ihlal veya pozitif olarak asistana yüklenmez.
+
 YÖNERGEYİ DİKKATLİCE OKU:
 ${YONERGE}
 
@@ -80,7 +83,16 @@ DEĞERLENDİRME KURALLARI:
 - violations: Her ihlal için rule (kural adı), detail (ne yapıldı/yapılmadı), critical (ciddi ihlal mi)
 - positives: Asistanın doğru yaptığı şeyler (liste)
 
-Eğer konuşma çok kısa veya bilgilendirici bir çağrıysa (gerçek bir sorun yoksa), yüksek skor verebilirsin.
+KESİN KURAL — ASLA İHLAL ETME:
+Transkriptte her satır "Asistan:" veya "Borçlu:" etiketi ile başlıyor.
+- "Asistan:" ile başlayan satırlar = çağrı merkezi çalışanının söyledikleri → BUNLARI DEĞERLENDİR
+- "Borçlu:" ile başlayan satırlar = müşterinin söyledikleri → BUNLARI ASLA DEĞERLENDİRME
+
+Borçlunun söylediği hiçbir şey asistanın ihlaline sayılamaz. İhlal ve pozitif listelerinde SADECE asistanın yaptıklarına odaklan. Borçlunun söyledikleri yalnızca bağlam bilgisi olarak kullan.
+
+Analiz yaparken şu soruyu sor: "Bu davranışı/sözü 'Asistan:' etiketli satırda mı gördüm?" — Cevap hayırsa, o davranışı değerlendirme.
+
+Eğer konuşma çok kısa veya saf bilgilendirme ise yüksek skor ver.
 Asistanın kimlik doğrulama yapıp yapmadığını, doğru bilgi verip vermediğini, uygun üslup kullanıp kullanmadığını değerlendir.`;
 
   const result = await model.generateContent(prompt);

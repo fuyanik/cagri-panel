@@ -2,24 +2,43 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { analyzeCompliance } from "@/lib/compliance";
 
-const DELAY_MS = 5000; // Gemini rate limit için bekleme
+const DELAY_MS = 5000;
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// 30 saniye = ~65 kelime (130 kelime/dk ortalama)
 function isLongEnough(transcript: string): boolean {
-  const wordCount = transcript.trim().split(/\s+/).length;
-  return wordCount >= 65;
+  return transcript.trim().split(/\s+/).length >= 65;
 }
 
-let isRunning = false;
+interface LogEntry {
+  index: number;
+  total: number;
+  fileName: string;
+  score?: number;
+  error?: string;
+}
+
+// global'de sakla — hot reload veya modül yeniden yüklemesinde kaybolmasın
+declare global {
+  // eslint-disable-next-line no-var
+  var _complianceRunning: boolean | undefined;
+  // eslint-disable-next-line no-var
+  var _complianceLog: LogEntry[] | undefined;
+}
+
+function getRunning(): boolean { return global._complianceRunning ?? false; }
+function setRunning(v: boolean) { global._complianceRunning = v; }
+function getLog(): LogEntry[] { return global._complianceLog ?? []; }
+function resetLog() { global._complianceLog = []; }
+function pushLog(entry: LogEntry) { (global._complianceLog = global._complianceLog ?? []).push(entry); }
 
 async function runCompliance(count: number) {
-  isRunning = true;
+  setRunning(true);
+  resetLog();
+
   try {
-    // Tamamlanan, 30sn+ olan ve henüz kontrol edilmemiş kayıtları al
     const snapshot = await adminDb
       .collection("calls")
       .where("status", "==", "completed")
@@ -28,27 +47,27 @@ async function runCompliance(count: number) {
     const candidates = snapshot.docs
       .filter((doc) => {
         const d = doc.data();
-        return (
-          !d.compliance &&
-          d.transcript &&
-          isLongEnough(d.transcript)
-        );
+        return !d.compliance && d.transcript && isLongEnough(d.transcript);
       })
       .slice(0, count === -1 ? 9999 : count);
-
-    console.log(`[Compliance] ${candidates.length} kayıt analiz edilecek`);
 
     for (let i = 0; i < candidates.length; i++) {
       const doc = candidates[i];
       const data = doc.data();
-      console.log(`[Compliance] ${i + 1}/${candidates.length}: ${data.fileName}`);
+      const entry: LogEntry = { index: i + 1, total: candidates.length, fileName: data.fileName as string };
+
+      pushLog(entry);
+      console.log(`[Compliance] ${entry.index}/${entry.total}: ${entry.fileName}`);
 
       try {
         const result = await analyzeCompliance(data.transcript);
         await doc.ref.update({ compliance: result });
-        console.log(`[Compliance] Skor: ${result.score} — ${data.fileName}`);
+        entry.score = result.score;
+        console.log(`[Compliance] Skor: ${result.score} — ${entry.fileName}`);
       } catch (err) {
-        console.error(`[Compliance] Hata (${data.fileName}):`, err);
+        const msg = err instanceof Error ? err.message : String(err);
+        entry.error = msg;
+        console.error(`[Compliance] Hata (${entry.fileName}):`, msg);
       }
 
       if (i < candidates.length - 1) await sleep(DELAY_MS);
@@ -58,7 +77,7 @@ async function runCompliance(count: number) {
   } catch (err) {
     console.error("[Compliance] Kritik hata:", err);
   } finally {
-    isRunning = false;
+    setRunning(false);
   }
 }
 
@@ -67,12 +86,11 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const count = typeof body.count === "number" ? body.count : 10;
 
-    if (isRunning) {
-      return NextResponse.json({ message: "Zaten çalışıyor", running: true });
+    if (getRunning()) {
+      return NextResponse.json({ message: "Zaten çalışıyor", running: true, log: getLog() });
     }
 
     runCompliance(count).catch(console.error);
-
     return NextResponse.json({ started: true, count: count === -1 ? "tümü" : count });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -81,17 +99,5 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  const snapshot = await adminDb
-    .collection("calls")
-    .where("status", "==", "completed")
-    .get();
-
-  const total = snapshot.docs.length;
-  const checked = snapshot.docs.filter((d) => d.data().compliance).length;
-  const longEnough = snapshot.docs.filter((d) => {
-    const data = d.data();
-    return data.transcript && isLongEnough(data.transcript);
-  }).length;
-
-  return NextResponse.json({ total, checked, longEnough, unchecked: longEnough - checked, running: isRunning });
+  return NextResponse.json({ running: getRunning(), log: getLog() });
 }

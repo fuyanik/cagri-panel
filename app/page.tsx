@@ -18,7 +18,11 @@ type ComplianceSort = null | "asc" | "desc";
 export default function Dashboard() {
   const { calls, loading, error } = useCalls();
   const { user } = useAuth();
-  const [complianceSort, setComplianceSort] = useState<ComplianceSort>(null);
+  const [complianceSort, setComplianceSort] = useState<ComplianceSort>(() => {
+    if (typeof window === "undefined") return null;
+    const saved = localStorage.getItem("complianceSort");
+    return (saved === "asc" || saved === "desc") ? saved : null;
+  });
   const [resetSent, setResetSent] = useState(false);
 
   async function handlePasswordReset() {
@@ -46,29 +50,45 @@ export default function Dashboard() {
     : doneCalls;
 
   function cycleSort() {
-    setComplianceSort((v) => (v === null ? "asc" : v === "asc" ? "desc" : null));
+    setComplianceSort((v) => {
+      const next = v === null ? "asc" : v === "asc" ? "desc" : null;
+      if (next === null) localStorage.removeItem("complianceSort");
+      else localStorage.setItem("complianceSort", next);
+      return next;
+    });
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F5F7]">
-      <div className="max-w-5xl mx-auto px-6 py-12">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-10">
-          {/* Kullanıcı bilgisi */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#0071E3] flex items-center justify-center shrink-0">
-              <User className="w-5 h-5 text-white" />
+    <div className="min-h-screen bg-[#F5F5F7] overflow-x-hidden">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+        {/* Header — mobilde dikey, masaüstünde yatay */}
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8 sm:mb-10">
+          {/* Üst satır: kullanıcı + çıkış */}
+          <div className="flex items-center justify-between sm:justify-start gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-[#0071E3] flex items-center justify-center shrink-0">
+                <User className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900 truncate max-w-[180px] sm:max-w-none">{user?.email}</p>
+                <button
+                  onClick={handlePasswordReset}
+                  className="text-xs text-[#0071E3] hover:underline mt-0.5"
+                >
+                  {resetSent ? "✓ Link gönderildi" : "Şifre değiştir"}
+                </button>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900">{user?.email}</p>
-              <button
-                onClick={handlePasswordReset}
-                className="text-xs text-[#0071E3] hover:underline mt-0.5"
-              >
-                {resetSent ? "✓ Link gönderildi" : "Şifre değiştir"}
-              </button>
-            </div>
+            {/* Çıkış — sadece mobilde burada */}
+            <button
+              onClick={() => signOut(auth)}
+              className="sm:hidden p-2 bg-white border border-gray-100 rounded-xl text-gray-400"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
+
+          {/* Kaydedilenler + Çıkış (masaüstü) */}
           <div className="flex items-center gap-3">
             <Link
               href="/saved"
@@ -85,7 +105,7 @@ export default function Dashboard() {
             <button
               onClick={() => signOut(auth)}
               title="Çıkış yap"
-              className="p-2.5 bg-white border border-gray-100 hover:border-gray-200 rounded-xl text-gray-400 hover:text-gray-600 transition-colors"
+              className="hidden sm:block p-2.5 bg-white border border-gray-100 hover:border-gray-200 rounded-xl text-gray-400 hover:text-gray-600 transition-colors"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -150,24 +170,24 @@ export default function Dashboard() {
 
             {/* Tamamlanan Çağrılar */}
             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-medium text-gray-700">Tamamlanan Çağrılar</h2>
-                  <span className="text-[11px] bg-green-50 text-green-600 font-medium px-2 py-0.5 rounded-full">
+              <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-100">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <h2 className="text-xs sm:text-sm font-medium text-gray-700">Tamamlanan</h2>
+                  <span className="text-[10px] sm:text-[11px] bg-green-50 text-green-600 font-medium px-1.5 sm:px-2 py-0.5 rounded-full hidden sm:inline">
                     {doneCalls.filter(c => c.status === "completed").length}
                   </span>
                   {doneCalls.filter(c => c.status === "error").length > 0 && (
-                    <span className="text-[11px] bg-red-50 text-red-500 font-medium px-2 py-0.5 rounded-full">
+                    <span className="text-[10px] sm:text-[11px] bg-red-50 text-red-500 font-medium px-1.5 sm:px-2 py-0.5 rounded-full">
                       {doneCalls.filter(c => c.status === "error").length} hata
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3">
                   {/* Yönerge skoruna göre sırala — 3 mod: off → kötüden iyiye → iyiden kötüye */}
                   <div className="flex items-center gap-1">
                     <button
                       onClick={cycleSort}
-                      className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-xl transition-colors ${
+                      className={`inline-flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-xs font-medium px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl transition-colors ${
                         complianceSort
                           ? "bg-[#0071E3] text-white"
                           : "bg-gray-50 text-gray-400 hover:text-gray-600"

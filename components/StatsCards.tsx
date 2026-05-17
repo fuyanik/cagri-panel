@@ -42,11 +42,11 @@ export default function StatsCards({ calls }: StatsCardsProps) {
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-4">
       {stats.map((stat) => (
         <div
           key={stat.label}
-          className={`${stat.bg} rounded-2xl px-6 py-5 border border-gray-100`}
+          className={`${stat.bg} rounded-2xl px-4 sm:px-6 py-4 sm:py-5 border border-gray-100`}
         >
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">
             {stat.label}
