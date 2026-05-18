@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, FileAudio, Calendar, Headphones, User, Bookmark, Volume2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { ArrowLeft, FileAudio, Calendar, Headphones, User, Bookmark, Volume2, CheckCircle2, XCircle, AlertTriangle, Copy, Check, AlertCircle, Trash2 } from "lucide-react";
 import type { CallRecord, TranscriptLine } from "@/lib/types";
 
 function parseTranscriptLines(call: CallRecord): TranscriptLine[] | null {
@@ -72,6 +72,32 @@ export default function CallDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!call) return;
+    if (!confirm(`"${call.fileName}" kaydını silmek istiyor musunuz? Bir sonraki analizde yeniden işlenecek.`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/calls/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        router.push(`/folders/${call.folderDate}`);
+      }
+    } catch (err) {
+      console.error(err);
+      setDeleting(false);
+    }
+  }
+
+  function copyDriveLink() {
+    if (!call) return;
+    const url = `https://drive.google.com/file/d/${call.driveFileId}/view`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   useEffect(() => {
     async function fetchCall() {
@@ -135,16 +161,27 @@ export default function CallDetailPage() {
 
   const transcriptLines = parseTranscriptLines(call);
 
+  // Geri dön butonu için gün adını hesapla
+  function getFolderLabel(folderDate: string) {
+    const year = parseInt(folderDate.slice(0, 4));
+    const month = parseInt(folderDate.slice(4, 6)) - 1;
+    const day = parseInt(folderDate.slice(6, 8));
+    const d = new Date(year, month, day);
+    const dayName = d.toLocaleDateString("tr-TR", { weekday: "long" });
+    const dateName = d.toLocaleDateString("tr-TR", { day: "numeric", month: "long" });
+    return `${dateName} ${dayName.charAt(0).toUpperCase() + dayName.slice(1)}`;
+  }
+
   return (
     <div className="min-h-screen bg-[#F5F5F7]">
       <div className="max-w-3xl mx-auto px-6 py-12">
         {/* Back */}
         <button
-          onClick={() => router.back()}
-          className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors mb-8"
+          onClick={() => router.push(`/folders/${call.folderDate}`)}
+          className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 bg-white shadow-sm hover:shadow px-4 py-2.5 rounded-xl transition-all cursor-pointer mb-8"
         >
           <ArrowLeft className="w-4 h-4" />
-          Dashboard
+          Geri Dön — {getFolderLabel(call.folderDate)}
         </button>
 
         {/* Header */}
@@ -156,45 +193,88 @@ export default function CallDetailPage() {
               </div>
               <div className="min-w-0">
                 <h1 className="text-base font-semibold text-gray-900 truncate">{call.fileName}</h1>
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex flex-wrap items-center gap-2 mt-1">
                   <Calendar className="w-3 h-3 text-gray-300" />
                   <span className="text-xs text-gray-400">{call.folderDate}</span>
+                  {call.agentName && (
+                    <span className="text-xs font-medium text-[#0071E3]">· {call.agentName}</span>
+                  )}
                   {call.processedAt && (
                     <span className="text-xs text-gray-300">
                       · {new Date(call.processedAt).toLocaleString("tr-TR")}
                     </span>
                   )}
                 </div>
+
+                {/* Borçlu bilgileri */}
+                {call.subjectInfo && (call.subjectInfo.name || call.subjectInfo.tcNo || call.subjectInfo.icraOffice || call.subjectInfo.fileNo) && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+                    {call.subjectInfo.name && (
+                      <span className="text-xs text-gray-600"><span className="text-gray-400">Borçlu:</span> {call.subjectInfo.name}</span>
+                    )}
+                    {call.subjectInfo.tcNo && (
+                      <span className="text-xs text-gray-600"><span className="text-gray-400">TC:</span> {call.subjectInfo.tcNo}</span>
+                    )}
+                    {call.subjectInfo.icraOffice && (
+                      <span className="text-xs text-gray-600"><span className="text-gray-400">İcra:</span> {call.subjectInfo.icraOffice}</span>
+                    )}
+                    {call.subjectInfo.fileNo && (
+                      <span className="text-xs text-gray-600"><span className="text-gray-400">Dosya:</span> {call.subjectInfo.fileNo}</span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Drive'da dinle */}
-            <a
-              href={`https://drive.google.com/file/d/${call.driveFileId}/view`}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Drive'da dinle"
-              className="shrink-0 p-2 rounded-xl bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
-            >
-              <Volume2 className="w-4 h-4" />
-            </a>
+            {/* Buton grubu — yan yana */}
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Sil */}
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                title="Kaydı sil (yeniden analiz edilecek)"
+                className="p-2 rounded-xl bg-gray-50 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
 
-            {/* Kaydet butonu */}
-            <button
-              onClick={toggleSave}
-              disabled={saving}
-              title={call.saved ? "Kaydı kaldır" : "Kaydet"}
-              className={`shrink-0 p-2 rounded-xl transition-colors ${
-                call.saved
-                  ? "bg-[#0071E3] text-white"
-                  : "bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-              }`}
-            >
-              <Bookmark
-                className="w-4 h-4"
-                fill={call.saved ? "currentColor" : "none"}
-              />
-            </button>
+              {/* Linki kopyala */}
+              <button
+                onClick={copyDriveLink}
+                title="Drive linkini kopyala"
+                className="p-2 rounded-xl bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+              >
+                {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+              </button>
+
+              {/* Drive'da dinle */}
+              <a
+                href={`https://drive.google.com/file/d/${call.driveFileId}/view`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Drive'da dinle"
+                className="p-2 rounded-xl bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+              >
+                <Volume2 className="w-4 h-4" />
+              </a>
+
+              {/* Kaydet butonu */}
+              <button
+                onClick={toggleSave}
+                disabled={saving}
+                title={call.saved ? "Kaydı kaldır" : "Kaydet"}
+                className={`p-2 rounded-xl transition-colors ${
+                  call.saved
+                    ? "bg-[#0071E3] text-white"
+                    : "bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                }`}
+              >
+                <Bookmark
+                  className="w-4 h-4"
+                  fill={call.saved ? "currentColor" : "none"}
+                />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -211,20 +291,41 @@ export default function CallDetailPage() {
           <div className="bg-white rounded-2xl border border-gray-100 px-6 py-5 mb-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Yönerge Uygunluğu</h2>
-              <span
-                className={`text-sm font-bold px-3 py-1 rounded-full ${
-                  call.compliance.score >= 80
-                    ? "bg-green-50 text-green-600"
-                    : call.compliance.score >= 60
-                    ? "bg-amber-50 text-amber-600"
-                    : "bg-red-50 text-red-500"
-                }`}
-              >
-                {call.compliance.score}/100
-              </span>
+              {call.compliance.notEvaluable ? (
+                <span className="text-sm font-semibold px-3 py-1 rounded-full bg-gray-100 text-gray-400">
+                  Değerlendirilemez
+                </span>
+              ) : (
+                <span
+                  className={`text-sm font-bold px-3 py-1 rounded-full ${
+                    call.compliance.score >= 80
+                      ? "bg-green-50 text-green-600"
+                      : call.compliance.score >= 60
+                      ? "bg-amber-50 text-amber-600"
+                      : "bg-red-50 text-red-500"
+                  }`}
+                >
+                  {call.compliance.score}/100
+                </span>
+              )}
             </div>
 
             <p className="text-sm text-gray-700 leading-relaxed mb-4">{call.compliance.summary}</p>
+
+            {/* Uyarılar (sarı) */}
+            {(call.compliance.warnings?.length ?? 0) > 0 && (
+              <div className="mb-4">
+                <p className="text-xs font-medium text-amber-600 mb-2">Dikkat Gerektiren Durumlar</p>
+                <div className="flex flex-col gap-1.5">
+                  {call.compliance.warnings!.map((w, i) => (
+                    <div key={i} className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl px-4 py-2.5">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+                      <p className="text-xs text-amber-700">{w}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Olumlu */}
             {call.compliance.positives.length > 0 && (

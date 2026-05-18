@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
-import { analyzeCompliance } from "@/lib/compliance";
+import { analyzeCompliance } from "@/lib/gemini";
 
 const DELAY_MS = 5000;
 
@@ -15,6 +15,7 @@ function isLongEnough(transcript: string): boolean {
 interface LogEntry {
   index: number;
   total: number;
+  callId: string;
   fileName: string;
   score?: number;
   error?: string;
@@ -54,7 +55,7 @@ async function runCompliance(count: number) {
     for (let i = 0; i < candidates.length; i++) {
       const doc = candidates[i];
       const data = doc.data();
-      const entry: LogEntry = { index: i + 1, total: candidates.length, fileName: data.fileName as string };
+      const entry: LogEntry = { index: i + 1, total: candidates.length, callId: doc.id, fileName: data.fileName as string };
 
       pushLog(entry);
       console.log(`[Compliance] ${entry.index}/${entry.total}: ${entry.fileName}`);

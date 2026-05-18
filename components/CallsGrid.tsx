@@ -45,29 +45,35 @@ function StatusBadge({ status }: { status: CallRecord["status"] }) {
   );
 }
 
+const AGENT_COLORS = [
+  "text-blue-600",
+  "text-violet-600",
+  "text-emerald-600",
+  "text-rose-600",
+  "text-amber-600",
+  "text-cyan-600",
+  "text-pink-600",
+  "text-teal-600",
+];
+
+function agentColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AGENT_COLORS[Math.abs(hash) % AGENT_COLORS.length];
+}
+
 function estimateDuration(call: CallRecord): string | null {
-  // 1. Önce dosya boyutundan dene
-  if (call.fileSizeBytes && call.fileSizeBytes > 0) {
-    const seconds = Math.round(call.fileSizeBytes / 16000);
-    if (seconds < 60) return `~${seconds}sn`;
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return secs > 0 ? `~${mins}dk ${secs}sn` : `~${mins}dk`;
-  }
+  // Önce kayıtlı saniye değerine bak
+  const seconds = call.estimatedDurationSeconds ?? (() => {
+    const text = call.transcript || (call.transcriptLines?.map((l) => l.text).join(" ") ?? "");
+    if (text.length < 10) return null;
+    return Math.round((text.trim().split(/\s+/).length / 130) * 60);
+  })();
 
-  // 2. Transkript satır/kelime sayısından tahmin et
-  // Ortalama Türkçe konuşma: ~130 kelime/dk
-  const text = call.transcript || 
-    (call.transcriptLines?.map((l) => l.text).join(" ") ?? "");
-  
-  if (text.length < 10) return null;
-
-  const wordCount = text.trim().split(/\s+/).length;
-  const estimatedSeconds = Math.round((wordCount / 130) * 60);
-
-  if (estimatedSeconds < 60) return `~${estimatedSeconds}sn`;
-  const mins = Math.floor(estimatedSeconds / 60);
-  const secs = estimatedSeconds % 60;
+  if (!seconds) return null;
+  if (seconds < 60) return `~${seconds}sn`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
   return secs > 0 ? `~${mins}dk ${secs}sn` : `~${mins}dk`;
 }
 
@@ -127,12 +133,19 @@ function CallCard({ call, index }: { call: CallRecord; index: number }) {
         <FileAudio className="w-4 h-4 text-[#0071E3]" />
       </div>
 
-      {/* Dosya adı + hata */}
+      {/* Dosya adı + asistan adı + hata */}
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-gray-900 truncate">{call.fileName}</p>
-        {call.errorMessage && (
-          <p className="text-xs text-red-400 line-clamp-1 mt-0.5">{call.errorMessage}</p>
-        )}
+        <div className="flex items-center gap-2 mt-0.5">
+          {call.agentName && (
+            <span className={`text-[11px] font-medium ${agentColor(call.agentName)}`}>
+              {call.agentName}
+            </span>
+          )}
+          {call.errorMessage && (
+            <p className="text-xs text-red-400 line-clamp-1">{call.errorMessage}</p>
+          )}
+        </div>
       </div>
 
       {/* Süre */}
@@ -147,17 +160,23 @@ function CallCard({ call, index }: { call: CallRecord; index: number }) {
 
       {/* Uygunluk skoru */}
       {call.compliance && (
-        <span
-          className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-            call.compliance.score >= 80
-              ? "bg-green-50 text-green-600"
-              : call.compliance.score >= 60
-              ? "bg-amber-50 text-amber-600"
-              : "bg-red-50 text-red-500"
-          }`}
-        >
-          {call.compliance.score}
-        </span>
+        call.compliance.notEvaluable ? (
+          <span className="shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">
+            —
+          </span>
+        ) : (
+          <span
+            className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+              call.compliance.score >= 80
+                ? "bg-green-50 text-green-600"
+                : call.compliance.score >= 60
+                ? "bg-amber-50 text-amber-600"
+                : "bg-red-50 text-red-500"
+            }`}
+          >
+            {call.compliance.score}
+          </span>
+        )
       )}
 
       {/* Durum */}

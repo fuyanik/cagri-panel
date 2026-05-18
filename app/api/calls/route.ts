@@ -9,12 +9,24 @@ export async function GET() {
       .limit(500)
       .get();
 
-    const calls = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate?.()?.toISOString() ?? null,
-      processedAt: doc.data().processedAt?.toDate?.()?.toISOString() ?? null,
-    }));
+    const calls = snapshot.docs.map((doc) => {
+      const d = doc.data();
+      // compliance.checkedAt Firestore Timestamp olarak gelir, serialize et
+      const compliance = d.compliance
+        ? {
+            ...d.compliance,
+            checkedAt: d.compliance.checkedAt?.toDate?.()?.toISOString() ?? null,
+          }
+        : undefined;
+
+      return {
+        id: doc.id,
+        ...d,
+        createdAt: d.createdAt?.toDate?.()?.toISOString() ?? null,
+        processedAt: d.processedAt?.toDate?.()?.toISOString() ?? null,
+        compliance,
+      };
+    });
 
     return NextResponse.json({ calls });
   } catch (err) {

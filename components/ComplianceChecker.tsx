@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ShieldCheck, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { ShieldCheck, Loader2, CheckCircle2, XCircle, ExternalLink } from "lucide-react";
 import { useCalls } from "@/providers/CallsProvider";
 
 const COUNT_OPTIONS = [
@@ -17,6 +17,7 @@ const COUNT_OPTIONS = [
 interface LogEntry {
   index: number;
   total: number;
+  callId: string;
   fileName: string;
   score?: number;
   error?: string;
@@ -26,8 +27,10 @@ function isLongEnough(transcript: string): boolean {
   return transcript.trim().split(/\s+/).length >= 65;
 }
 
-export default function ComplianceChecker() {
-  const { calls, loading } = useCalls();
+export default function ComplianceChecker({ folderDate }: { folderDate?: string }) {
+  const { calls: allCalls, loading } = useCalls();
+  // folderDate verilmişse sadece o günün çağrılarını al
+  const calls = folderDate ? allCalls.filter((c) => c.folderDate === folderDate) : allCalls;
   const [selectedCount, setSelectedCount] = useState(10);
   const [running, setRunning] = useState(false);
   const [log, setLog] = useState<LogEntry[]>([]);
@@ -204,6 +207,15 @@ export default function ComplianceChecker() {
               {entry.error && <span className="text-red-400 shrink-0">hata</span>}
               {entry.score === undefined && !entry.error && (
                 <Loader2 className="w-3 h-3 animate-spin text-blue-400 shrink-0" />
+              )}
+              {entry.score !== undefined && entry.callId && (
+                <button
+                  onClick={() => window.open(`/calls/${entry.callId}`, "_blank", "noopener,noreferrer")}
+                  title="Detayı aç"
+                  className="shrink-0 text-gray-300 hover:text-[#0071E3] transition-colors"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                </button>
               )}
             </div>
           ))}

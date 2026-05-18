@@ -4,20 +4,31 @@ import type { CallRecord } from "@/lib/types";
 
 interface StatsCardsProps {
   calls: CallRecord[];
+  wavTotal?: number | null; // Drive'dan gelen toplam WAV sayısı
+  wavLoading?: boolean;
 }
 
-export default function StatsCards({ calls }: StatsCardsProps) {
-  const total = calls.length;
-  const completed = calls.filter((c) => c.status === "completed").length;
+export default function StatsCards({ calls, wavTotal, wavLoading }: StatsCardsProps) {
+  const processed = calls.length;
+  const completedCalls = calls.filter((c) => c.status === "completed");
+  const completed = completedCalls.length;
   const errors = calls.filter((c) => c.status === "error").length;
   const processing = calls.filter(
     (c) => c.status === "pending" || c.status === "processing"
   ).length;
 
+  // Toplam: Drive'dan gelen sayı varsa onu kullan, yoksa işlenenleri göster
+  const totalValue = wavTotal ?? processed;
+  const totalLabel = wavTotal != null ? "Toplam Çağrı" : "Toplam Çağrı";
+
+  // Yönerge analizi yapılanlar vs yapılmayanlar (kısa çağrı / IVR)
+  const analyzed = completedCalls.filter((c) => c.compliance && !c.compliance.notEvaluable).length;
+  const notAnalyzed = completedCalls.filter((c) => c.compliance?.notEvaluable).length;
+
   const stats = [
     {
-      label: "Toplam Çağrı",
-      value: total,
+      label: totalLabel,
+      value: wavLoading ? null : totalValue,
       color: "text-gray-900",
       bg: "bg-white",
     },
@@ -28,15 +39,15 @@ export default function StatsCards({ calls }: StatsCardsProps) {
       bg: "bg-white",
     },
     {
-      label: "İşleniyor",
-      value: processing,
-      color: "text-blue-600",
+      label: "Analiz Edildi",
+      value: analyzed,
+      color: "text-[#0071E3]",
       bg: "bg-white",
     },
     {
-      label: "Hata",
-      value: errors,
-      color: "text-red-500",
+      label: "Analiz Dışı",
+      value: notAnalyzed,
+      color: "text-gray-400",
       bg: "bg-white",
     },
   ];
@@ -51,7 +62,11 @@ export default function StatsCards({ calls }: StatsCardsProps) {
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">
             {stat.label}
           </p>
-          <p className={`text-3xl font-semibold ${stat.color}`}>{stat.value}</p>
+          {stat.value === null ? (
+            <div className="h-8 w-16 bg-gray-100 rounded-lg animate-pulse mt-1" />
+          ) : (
+            <p className={`text-3xl font-semibold ${stat.color}`}>{stat.value}</p>
+          )}
         </div>
       ))}
     </div>

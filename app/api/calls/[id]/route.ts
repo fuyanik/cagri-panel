@@ -26,6 +26,20 @@ export async function GET(
   }
 }
 
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    await adminDb.collection("calls").doc(id).delete();
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: errorMsg }, { status: 500 });
+  }
+}
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }

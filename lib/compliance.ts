@@ -1,34 +1,19 @@
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { readFileSync } from "fs";
+import { join } from "path";
 import type { ComplianceResult } from "./types";
 
-const YONERGE = `
-ACAR HUKUK VE DANIŞMANLIK OFİSİ - ÇAĞRI MERKEZİ YÖNERGESİ v1.1 (Özet)
-
-TEMEL KURALLAR:
-1. Asistan kibarca, tehditkâr olmayan bir üslup kullanmalı.
-2. Borçluya ödeme yapmaması halinde olası sonuçları (haciz, kredi notu düşüşü, araç yakalama) sade ve gerçekçi şekilde anlatmalı; korkutucu veya abartılı ifade kullanmamalı.
-3. Ödeme seçenekleri sunulmalı: icra dairesine EFT/havale, kredi kartı (link gönderimi), kurum IBAN (yalnızca devirli/düşük bakiyeli dosyalar).
-4. İndirim: Tebligat tarihinden itibaren 7 gün içindeyse indirimli ödeme seçeneği sunulabilir; dışındaysa indirim uygulanamaz.
-5. Kimlik doğrulama: Borçlunun TC kimlik numarası veya anne/baba adıyla doğrulama yapılmalı.
-6. Taksit: Yeni dosyalarda taksit yapılmaz. Birden fazla/yüksek bakiyeli dosyalarda yönetici onayıyla yapılabilir.
-7. Evrak talepleri: Dekont, noter satış belgesi, plaka kaydı gibi belgeler WhatsApp üzerinden talep edilmeli.
-8. Borçlu itiraz ederse: İlgili sorular için hazır yanıtlar kullanılmalı (HGS sorunu, araç satışı, plaka kopyalama vb.).
-9. Üçüncü taraf aramaları: Araç kullanıcısı farklıysa araç sahibi onayı alınmadan bilgi verilmemeli.
-10. Borçlu ödeme yapacaksa: UYAP değil güncel sistem bakiyesi paylaşılmalı; UYAP'ın güncel olmayabileceği belirtilmeli.
-11. Korkutucu/tehditkâr dil kesinlikle yasak.
-12. Konuşma sonunda net bir sonuç (ödeme vaadi, evrak talebi, bilgilendirme tamamlandı) elde edilmeli.
-13. Devir dosyalarda ödeme kuruma yapılır, UYAP üzerinden değil; borçluya açıklanmalı.
-14. Serbest meslek makbuzu veya fatura düzenlenemez; bu bilgi doğru verilmeli.
-15. Haciz bilgisi doğru verilmeli: tebligattan 7 gün sonra haciz başlar.
-
-UYGUN OLMAYAN DAVRANIŞ ÖRNEKLERİ:
-- Yanlış bakiye veya tarih bilgisi vermek
-- Borçluyu tehdit etmek ("seni mahvederiz", "iş yerini kapatırız" vb.)
-- Kimlik doğrulaması yapmadan bilgi paylaşmak
-- İndirimli süre dışındaki borçluya indirim vadinde bulunmak
-- Araç sahibi onayı olmadan üçüncü tarafa bilgi vermek
-- Evrak gerektiren durumda evrak talep etmemek
-`;
+// Tam yönergeyi dosyadan oku — proje dizini relative
+function loadYonerge(): string {
+  try {
+    const yonergePath = join(process.cwd(), "lib", "yonerge.md");
+    return readFileSync(yonergePath, "utf-8");
+  } catch {
+    // Fallback: yönerge dosyası bulunamazsa boş string
+    console.error("[Compliance] yonerge.md okunamadı");
+    return "";
+  }
+}
 
 export async function analyzeCompliance(transcript: string): Promise<ComplianceResult> {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -42,6 +27,7 @@ export async function analyzeCompliance(transcript: string): Promise<ComplianceR
         properties: {
           score: { type: SchemaType.NUMBER },
           compliant: { type: SchemaType.BOOLEAN },
+          notEvaluable: { type: SchemaType.BOOLEAN },
           summary: { type: SchemaType.STRING },
           violations: {
             type: SchemaType.ARRAY,
@@ -55,55 +41,158 @@ export async function analyzeCompliance(transcript: string): Promise<ComplianceR
               required: ["rule", "detail", "critical"],
             },
           },
+          warnings: {
+            type: SchemaType.ARRAY,
+            items: { type: SchemaType.STRING },
+          },
           positives: {
             type: SchemaType.ARRAY,
             items: { type: SchemaType.STRING },
           },
         },
-        required: ["score", "compliant", "summary", "violations", "positives"],
+        required: ["score", "compliant", "notEvaluable", "summary", "violations", "warnings", "positives"],
       },
     },
   });
 
-  const prompt = `Aşağıdaki çağrı merkezi görüşme transkriptini, verilen yönergeye göre değerlendir.
+  const yonerge = loadYonerge();
 
-ÖNEMLİ UYARI: Değerlendirmeni YALNIZCA ASİSTAN'IN söylediklerine dayandır.
-Borçlunun söyledikleri bağlam için okunur; ihlal veya pozitif olarak asistana yüklenmez.
+  const prompt = `Aşağıdaki çağrı merkezi görüşme transkriptini verilen yönergeye göre değerlendir.
 
-YÖNERGEYİ DİKKATLİCE OKU:
-${YONERGE}
+═══════════════════════════════════════
+BAĞLAM — ÖNCE OKU
+═══════════════════════════════════════
+Bu yönerge Acar Hukuk ve Danışmanlık Ofisi'nin icra takip birimi çağrı merkezi içindir.
+Çağrılar genellikle otoyol geçiş ihlali (Avrasya Tüneli, Otoyol AŞ, ÇOK AŞ) kaynaklı icra dosyaları hakkındadır.
+Asistan borçluyu arar ya da borçlu arar. Amaç: bilgilendirme, ödeme yönlendirme ve evrak talebi.
 
-TRANSKRİPT:
+TEMEL KURALLAR (hızlı referans):
+1. Üslup: Kibarca, tehditkâr olmayan dil. Haciz/yakalama gibi sonuçlar sade anlatılır, korkutucu ifade yasak.
+2. Kimlik doğrulama: TC veya anne/baba adıyla doğrulama yapılmalı. ANCAK daha önce iletişim kurulduysa istenmeyebilir (detay aşağıda).
+3. Ödeme seçenekleri: İcra dairesine EFT/havale; kredi kartı (link); kurum IBAN yalnızca devirli/düşük bakiyeli dosyalarda.
+4. İndirim: Tebligattan itibaren 7 gün içindeyse uygulanabilir; dışındaysa uygulanamaz.
+5. Taksit: Yeni dosyalarda yapılmaz; yönetici onayıyla eski/yüksek bakiyeli dosyalarda yapılabilir.
+6. UYAP bakiyesi: Güncel olmayabilir; sistem bakiyesi paylaşılmalı ve bu fark açıklanmalı.
+7. Evrak gerektiren itirazlar: Dekont, noter satışı, plaka kaydı vb. WhatsApp üzerinden talep edilmeli.
+8. Üçüncü taraf: Araç sahibi onayı olmadan bilgi paylaşılamaz.
+9. Devir dosyalar: Ödeme kuruma yapılır; UYAP üzerinden değil.
+10. Serbest meslek makbuzu/fatura: Düzenlenemez; bu bilgi doğru verilmeli.
+11. Haciz süresi: Tebligattan 7 gün sonra başlar.
+12. Konuşma sonu: Net sonuç alınmalı (ödeme vaadi, evrak talebi veya bilgilendirme tamamlandı).
+
+KRİTİK İHLAL TANIMI:
+Aşağıdakiler KRİTİK sayılır (critical: true):
+- Müşteriye yanlış hukuki bilgi vermek (yanlış süre, yanlış tutar, yanlış prosedür)
+- Açıkça tehdit edici veya küçümseyici dil kullanmak ("seni mahvederiz", "işini kaybedersin" gibi)
+- Kimlik doğrulaması yapmadan borç detayı paylaşmak
+- Araç sahibi onayı olmadan üçüncü tarafa bilgi vermek
+- İndirimli süre dışında indirim vaadinde bulunmak
+- Taksit mümkün değilken kesin taksit sözü vermek
+
+KİMLİK DOĞRULAMA KURALI — DETAYLI:
+Bu kural en önemli kuraldır ve şu şekilde değerlendirilir:
+
+DURUM A — İLK GÖRÜŞME (TC istenmesi ZORUNLU):
+Transkriptte şu belirtiler varsa ilk görüşmedir:
+- Asistan borçluya kendini tanıtıyor ve dosya bilgisini ilk kez aktarıyor
+- Borçlu "ben kimim, hangi dosya" tarzı sorular soruyor
+- Hiçbir "geçen gün görüştük", "biliyorsunuz", "size daha önce söylemiştim" gibi ifade yok
+- Durum: TC kimlik NO istenmemişse KRİTİK ihlal (critical: true, violations listesine ekle)
+
+DURUM B — TEKRAR GÖRÜŞME (TC isteğe bağlı, sarı uyarı):
+Transkriptte şu belirtilerden biri varsa daha önce iletişim kurulmuştur:
+- "daha önceden görüşmüştük", "geçen gün / salı günü / geçen hafta konuşmuştuk"
+- "Arzu Hanım'la / Gamze Hanım'la / Derya Hanım'la görüşmüştüm"
+- "biliyorsunuz, daha öncelerde / bir önceki görüşmemizde söylemiştik"
+- "beni aktarıyordu / ona aktarıyorum"
+- Borçlu asistanı ismiyle tanıyor ya da ofis çalışanını ismiyle soruyor
+- "ikinci/üçüncü aramamda / yeniden arıyorum" gibi ifadeler
+- Asistan "sizi biliyoruz / daha önce iletişime geçmiştik" diyor
+→ Bu durumda TC istenmemesi kabul edilebilir. Ancak warnings listesine şunu ekle:
+  "Daha önceden iletişim kurulduğu anlaşıldığından kimlik doğrulama atlanmış olabilir. İlk görüşmeyse TC alınması gerekir."
+
+DURUM C — BELİRSİZ:
+İlk mi tekrar mı olduğu anlaşılamıyorsa warnings listesine ekle:
+  "Kimlik doğrulamanın yapılıp yapılmadığı net değil. İlk görüşmeyse TC alınması gerekir."
+
+KRİTİK İHLAL SAYILMAZ — DİKKAT:
+Aşağıdakiler ihlal veya tehdit DEĞİLDİR:
+1. Yönergede belirtilen olası sonuçları aktarmak: "Araç yakalama masrafı ortalama 30.000-40.000 TL civarındadır", "Haciz durumunda kredi notunuz düşer", "Maaş haczinde işvereniniz sorumlu olur" gibi ifadeler yönergenin 13, 15 ve 36. maddelerinde açıkça belirtilmiştir. Bunlar bilgilendirme amaçlı söylenmiş gerçek bilgilerdir; sert veya küçümseyici bir bağlamda kullanılmadıkça ihlal sayılmaz.
+2. Dosya sorumlusuna yönlendirme: Asistanın "Bu dosyanın sorumlusu Derya hanım / Zeynep hanım, kendisine aktarıyorum" demesi veya ilgili avukata yönlendirmesi yönergenin 37. ve 39. maddelerinin gereğidir. Bu davranış olumlu (pozitif) sayılmalıdır, ihlal değil.
+
+PUANLAMA REHBERİ:
+- 90-100: Tüm kritik kurallar uygulandı, iletişim mükemmel, net sonuç alındı
+- 75-89: Küçük ihmal veya eksik bilgi var ama genel uyumlu
+- 55-74: Birden fazla kural ihlali veya önemli bir bilgi eksik
+- 30-54: Ciddi ihlal var veya yanlış bilgi verildi
+- 0-29: Kritik ihlal (tehdit, kimlik paylaşımı, yanlış hukuki bilgi vb.)
+
+DEĞERLENDİRİLEMEZ ÇAĞRI:
+Aşağıdaki durumlarda notEvaluable: true, score: 0, compliant: false döndür ve violations/positives listelerini boş bırak:
+- Canlı bir asistan hiç devreye girmemiş; tüm konuşma otomatik IVR/anons sistemiyle geçmiş
+- Borçlu hatta bekletilmiş, asistana bağlanamamış ve çağrıyı kapatmış
+- Transkriptte "Asistan:" etiketli anlamlı bir konuşma satırı yok (sadece otomatik mesajlar var)
+summary alanına bu durumu kısaca açıkla ("Canlı asistan devreye girmedi, değerlendirme yapılamadı" gibi).
+
+KISA ÇAĞRI NOTU:
+Çok kısa çağrılarda (30-60 saniye) ya da borçlunun konuşmadan kapattığı durumlarda,
+asistan kendini tanıtıp bilgilendirme yapmaya çalışmışsa yüksek skor ver (85+).
+
+═══════════════════════════════════════
+TAM YÖNERGE (42 madde — tüm senaryolar)
+═══════════════════════════════════════
+${yonerge}
+
+═══════════════════════════════════════
+TRANSKRİPT
+═══════════════════════════════════════
 ${transcript}
 
-DEĞERLENDİRME KURALLARI:
-- score: 0-100 arası puan (100 = yönergeye tam uyumlu)
+═══════════════════════════════════════
+DEĞERLENDİRME TALİMATLARI
+═══════════════════════════════════════
+- score: 0-100 arası puan
 - compliant: score >= 70 ise true
-- summary: Türkçe, 2-4 cümle özet. Asistan ne yaptı, nerede uydu/uymadı.
-- violations: Her ihlal için rule (kural adı), detail (ne yapıldı/yapılmadı), critical (ciddi ihlal mi)
-- positives: Asistanın doğru yaptığı şeyler (liste)
+- summary: Türkçe, 2-4 cümle. Asistan ne yaptı, nerede uydu/uymadı.
+- violations: Kural adı + detay + critical flag
+- warnings: Sarı uyarılar — ihlal değil ama dikkat gerektiren durumlar (string listesi)
+- positives: Asistanın doğru yaptıkları
 
-KESİN KURAL — ASLA İHLAL ETME:
-Transkriptte her satır "Asistan:" veya "Borçlu:" etiketi ile başlıyor.
-- "Asistan:" ile başlayan satırlar = çağrı merkezi çalışanının söyledikleri → BUNLARI DEĞERLENDİR
-- "Borçlu:" ile başlayan satırlar = müşterinin söyledikleri → BUNLARI ASLA DEĞERLENDİRME
+ALINTI ZORUNLULUĞU — KESİN KURAL:
+violations ve warnings listelerine bir madde eklemeden önce şu soruyu sor:
+"Bu iddiayı destekleyen, 'Asistan:' ile başlayan bir satır var mı transkriptte?"
+Eğer transkriptten birebir alıntı yapamıyorsan o ihlalin var olmadığını kabul et ve listeye ekleme.
+Transkriptte geçmeyen isimler, sözler veya olaylar UYDURMAK yasaktır.
 
-Borçlunun söylediği hiçbir şey asistanın ihlaline sayılamaz. İhlal ve pozitif listelerinde SADECE asistanın yaptıklarına odaklan. Borçlunun söyledikleri yalnızca bağlam bilgisi olarak kullan.
+violations.detail YAZIM FORMATI:
+Sadece alıntı yazmak yetmez. Şu formatı kullan:
+1. Önce kısa yorumunu yaz (neden ihlal, ilk/tekrar görüşme tespiti, bağlam)
+2. Sonra "Asistan:" satırından destekleyici alıntıyı tırnak içinde ver
 
-Analiz yaparken şu soruyu sor: "Bu davranışı/sözü 'Asistan:' etiketli satırda mı gördüm?" — Cevap hayırsa, o davranışı değerlendirme.
+Örnek doğru format:
+"İlk görüşme olduğu anlaşılmaktadır; asistan kimlik doğrulama yapmadan dosya detaylarını paylaşmıştır. Asistanın ifadesi: 'Serpil Hanım, adınıza kayıtlı 06 BN 87 02 plakalı araçla Avrasya Tüneli ihlali nedeniyle hakkınızda icra takibi açıldı.'"
 
-Eğer konuşma çok kısa veya saf bilgilendirme ise yüksek skor ver.
-Asistanın kimlik doğrulama yapıp yapmadığını, doğru bilgi verip vermediğini, uygun üslup kullanıp kullanmadığını değerlendir.`;
+Örnek yanlış format (sadece alıntı, yorum yok):
+"'Serpil Hanım, şimdi adınıza kayıtlı bir araç plakası var...'"
+
+KESİN KURAL:
+Transkriptte her satır "Asistan:" veya "Borçlu:" ile başlıyor.
+- "Asistan:" = çağrı merkezi çalışanı → DEĞERLENDİR
+- "Borçlu:" = müşteri → BAĞLAM OLARAK KULLAN, asistana yükleme
+
+"Bu davranışı Asistan: satırında gördüm mü?" — Hayırsa değerlendirme.`;
 
   const result = await model.generateContent(prompt);
   const responseText = result.response.text().trim();
   const parsed = JSON.parse(responseText) as ComplianceResult;
 
   return {
-    score: Math.max(0, Math.min(100, Math.round(parsed.score))),
+    score: parsed.notEvaluable ? 0 : Math.max(0, Math.min(100, Math.round(parsed.score))),
     compliant: parsed.compliant,
+    notEvaluable: parsed.notEvaluable ?? false,
     summary: parsed.summary,
     violations: parsed.violations ?? [],
+    warnings: parsed.warnings ?? [],
     positives: parsed.positives ?? [],
     checkedAt: new Date(),
   };

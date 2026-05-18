@@ -16,10 +16,19 @@ export interface ComplianceViolation {
 export interface ComplianceResult {
   score: number;
   compliant: boolean;
+  notEvaluable?: boolean;
   summary: string;
   violations: ComplianceViolation[];
+  warnings: string[];
   positives: string[];
   checkedAt?: Date;
+}
+
+export interface SubjectInfo {
+  name?: string;      // Borçlunun adı soyadı
+  tcNo?: string;      // TC kimlik numarası (11 hane)
+  icraOffice?: string; // İcra müdürlüğü
+  fileNo?: string;    // Dosya numarası
 }
 
 export interface CallRecord {
@@ -27,6 +36,9 @@ export interface CallRecord {
   fileName: string;
   driveFileId: string;
   folderDate: string;
+  agentName?: string;
+  subjectInfo?: SubjectInfo;
+  estimatedDurationSeconds?: number;
   transcript: string;
   transcriptLines?: TranscriptLine[];
   summary: string;

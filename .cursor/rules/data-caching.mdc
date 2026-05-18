@@ -1,0 +1,58 @@
+---
+description: Data fetching and caching patterns for this Next.js project. Prevents redundant API calls on every navigation.
+alwaysApply: true
+---
+
+# Data Caching — Navigation-Safe Fetching
+
+Sayfa bileşenlerinde (`useState` + `useEffect` ile fetch) doğrudan veri çekmek her mount'ta yeniden istek atar. Bunun yerine provider'da cache'le.
+
+## Kural: Tekrar eden veri → Provider'da tut
+
+❌ **YANLIŞ** (her sayfa girişinde yeniden fetch):
+```tsx
+export default function Page() {
+  const [data, setData] = useState(null);
+  useEffect(() => { fetch('/api/data').then(...) }, []); // Her mount'ta çalışır!
+}
+```
+
+✅ **DOĞRU** (provider'da bir kez çek, cache'ten sun):
+```tsx
+// providers/DataProvider.tsx
+const cache = useRef<Record<string, Data>>({});
+
+async function load(key: string) {
+  if (cache.current[key]) return; // Zaten var, tekrar istek atma
+  cache.current[key] = await fetch(`/api/data/${key}`).then(r => r.json());
+}
+
+// Bileşende:
+const { getData, loadData } = useDataProvider();
+useEffect(() => { loadData(key); }, [key]); // Sadece cache yoksa yükler
+```
+
+## Bu Projede Uygulanan Pattern
+
+| Veri | Provider | Neden |
+|------|----------|-------|
+| Tüm çağrılar (Firestore) | `CallsProvider` (onSnapshot) | Real-time, tek bağlantı |
+| Klasör listesi (Drive) | `FoldersProvider.folders` | Değişmez, bir kez yeter |
+| Klasör WAV sayısı (Drive) | `FoldersProvider.detailCache` | Lazy, key bazlı cache |
+
+## Yükleme Animasyonu
+
+Cache'te yokken (`loading === true`) skeleton göster, asla boş bırakma:
+```tsx
+{wavLoading ? (
+  <div className="h-8 w-16 bg-gray-100 rounded-lg animate-pulse" />
+) : (
+  <p>{wavCount}</p>
+)}
+```
+
+## Yeni Veri Tipi Eklerken
+
+1. Provider'a `cache: Record<string, T>` state ekle
+2. `load(key)` fonksiyonu: cache varsa erken çık, yoksa fetch et
+3. Bileşende `useEffect(() => { load(key); }, [key])` — hook olarak sun

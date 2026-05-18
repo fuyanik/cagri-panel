@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { listWavFiles, downloadFileAsBuffer } from "@/lib/drive";
-import { transcribeAndSummarize } from "@/lib/gemini";
+import { analyzeCall } from "@/lib/gemini";
 import { adminDb } from "@/lib/firebase-admin";
 
 const FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID!;
@@ -102,12 +102,12 @@ async function runPipeline() {
 
       try {
         const buffer = await downloadFileAsBuffer(file.id);
-        const geminiResult = await transcribeAndSummarize(buffer, file.name);
+        const geminiResult = await analyzeCall(buffer, file.name);
 
         await docRef.update({
           transcript: geminiResult.transcript,
           transcriptLines: geminiResult.transcriptLines,
-          summary: geminiResult.summary,
+          compliance: geminiResult.compliance,
           status: "completed",
           processedAt: new Date(),
         });

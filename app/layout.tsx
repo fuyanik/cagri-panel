@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { CallsProvider } from "@/providers/CallsProvider";
+import { FoldersProvider } from "@/providers/FoldersProvider";
 import { AuthProvider } from "@/providers/AuthProvider";
 import { AuthGuard } from "@/components/AuthGuard";
 import "./globals.css";
@@ -22,7 +23,9 @@ export default function RootLayout({
       <body className={inter.className}>
         <AuthProvider>
           <AuthGuard>
-            <CallsProvider>{children}</CallsProvider>
+            <FoldersProvider>
+              <CallsProvider>{children}</CallsProvider>
+            </FoldersProvider>
           </AuthGuard>
         </AuthProvider>
       </body>

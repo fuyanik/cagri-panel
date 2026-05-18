@@ -13,7 +13,9 @@ function getAdminDb() {
     projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
   });
 
-  return admin.firestore(app);
+  const db = admin.firestore(app);
+  db.settings({ ignoreUndefinedProperties: true });
+  return db;
 }
 
 // Lazy getter - sadece ilk çağrıda başlatılır, build sırasında değil
