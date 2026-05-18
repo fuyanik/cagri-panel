@@ -47,7 +47,7 @@ function ChatBubble({ line, index }: { line: TranscriptLine; index: number }) {
         )}
       </div>
 
-      <div className={`max-w-[75%] ${isAsistan ? "items-start" : "items-end"} flex flex-col gap-1`}>
+      <div className={`max-w-[98%] sm:max-w-[75%] ${isAsistan ? "items-start" : "items-end"} flex flex-col gap-1`}>
         <span className="text-[10px] font-medium text-gray-400 px-1">{line.speaker}</span>
         <div
           className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
@@ -394,7 +394,7 @@ export default function CallDetailPage() {
           </div>
 
           {/* Scroll container */}
-          <div className="overflow-y-auto max-h-[90vh] pr-1">
+          <div className="sm:overflow-y-auto sm:max-h-[90vh] pr-1">
             {transcriptLines ? (
               <div className="flex flex-col gap-4">
                 {transcriptLines.map((line, i) => (
