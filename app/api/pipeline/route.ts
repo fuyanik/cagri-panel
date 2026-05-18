@@ -3,11 +3,17 @@ import { getFolderIdByName, listWavFiles, downloadFileAsBuffer } from "@/lib/dri
 import { analyzeCall } from "@/lib/gemini";
 import { adminDb } from "@/lib/firebase-admin";
 
-const DELAY_MS = 5500; // Gemini rate limit
+const DELAY_MS = 4000; // Gemini rate limit (metin çağrısı x2 per dosya)
 const PARENT_FOLDER_ID = process.env.GOOGLE_DRIVE_PARENT_FOLDER_ID!;
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+export interface StepInfo {
+  label: string;
+  status: "waiting" | "running" | "done" | "error";
+  detail?: string;
 }
 
 export interface PipelineLogEntry {
@@ -15,9 +21,21 @@ export interface PipelineLogEntry {
   total: number;
   callId: string;
   fileName: string;
+  steps: StepInfo[];
   score?: number;
   notEvaluable?: boolean;
   error?: string;
+  step2Tokens?: number;
+  step3Tokens?: number;
+}
+
+const STEP_LABELS: StepInfo["label"][] = [
+  "Gemini 2.5 Flash — ses→transkript+atama",
+  "Gemini 2.5 Flash — yönerge analizi",
+];
+
+function makeSteps(): StepInfo[] {
+  return STEP_LABELS.map((label) => ({ label, status: "waiting" as const }));
 }
 
 // Global state — hot reload'da kaybolmasın
@@ -74,15 +92,17 @@ async function runPipeline(folderName: string, folderId: string, count: number) 
 
     for (let i = 0; i < toProcess.length; i++) {
       const file = toProcess[i];
+
       const entry: PipelineLogEntry = {
         index: i + 1,
         total: toProcess.length,
         callId: "",
         fileName: file.name,
+        steps: makeSteps(),
       };
       global._pipelineLog!.push(entry);
 
-      // Firestore'a pending kayıt oluştur
+      // Firestore'a processing kaydı oluştur
       const docRef = adminDb.collection("calls").doc();
       entry.callId = docRef.id;
       await docRef.set({
@@ -98,7 +118,14 @@ async function runPipeline(folderName: string, folderId: string, count: number) 
 
       try {
         const buffer = await downloadFileAsBuffer(file.id);
-        const result = await analyzeCall(buffer, file.name);
+
+        const result = await analyzeCall(buffer, file.name, (stepIndex, status, detail) => {
+          if (stepIndex >= 0 && stepIndex < entry.steps.length) {
+            entry.steps[stepIndex].status = status;
+            if (detail) entry.steps[stepIndex].detail = detail;
+          }
+          console.log(`[Pipeline] ${file.name} — Adım ${stepIndex + 1} ${status}${detail ? ` (${detail})` : ""}`);
+        });
 
         await docRef.update({
           transcript: result.transcript,
@@ -109,19 +136,32 @@ async function runPipeline(folderName: string, folderId: string, count: number) 
           compliance: result.compliance,
           status: "completed",
           processedAt: new Date(),
+          ...(result.step2Tokens !== undefined && { step2Tokens: result.step2Tokens }),
+          ...(result.step3Tokens !== undefined && { step3Tokens: result.step3Tokens }),
         });
 
         entry.score = result.compliance.score;
         entry.notEvaluable = result.compliance.notEvaluable;
-        console.log(`[Pipeline] ${i + 1}/${toProcess.length} tamamlandı: ${file.name} → ${result.compliance.notEvaluable ? "—" : result.compliance.score}`);
+        entry.step2Tokens = result.step2Tokens;
+        entry.step3Tokens = result.step3Tokens;
+        console.log(
+          `[Pipeline] ${i + 1}/${toProcess.length} tamamlandı: ${file.name} → ${
+            result.compliance.notEvaluable ? "—" : result.compliance.score
+          }`
+        );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         entry.error = msg;
+        // Hata olan adımı "error" olarak işaretle
+        const runningStep = entry.steps.findIndex((s) => s.status === "running");
+        if (runningStep >= 0) {
+          entry.steps[runningStep].status = "error";
+          entry.steps[runningStep].detail = msg.slice(0, 80);
+        }
         await docRef.update({ status: "error", errorMessage: msg, processedAt: new Date() });
         console.error(`[Pipeline] Hata (${file.name}):`, msg);
       }
 
-      // Durdur isteği geldiyse çık
       if (global._pipelineShouldStop) {
         console.log(`[Pipeline] ${folderName} kullanıcı tarafından durduruldu`);
         break;
@@ -148,14 +188,12 @@ export async function POST(request: Request) {
     if (!PARENT_FOLDER_ID) return NextResponse.json({ error: "GOOGLE_DRIVE_PARENT_FOLDER_ID tanımlanmamış" }, { status: 500 });
 
     if (global._pipelineRunning) {
-      return NextResponse.json({
-        running: true,
-        folder: global._pipelineFolder,
-        message: `Başka bir süreç devam ediyor: ${global._pipelineFolder}`,
-      }, { status: 409 });
+      return NextResponse.json(
+        { running: true, folder: global._pipelineFolder, message: `Başka bir süreç devam ediyor: ${global._pipelineFolder}` },
+        { status: 409 }
+      );
     }
 
-    // Folder ID'sini Drive'dan bul
     const folderId = await getFolderIdByName(PARENT_FOLDER_ID, folderName);
     if (!folderId) return NextResponse.json({ error: `'${folderName}' bulunamadı` }, { status: 404 });
 

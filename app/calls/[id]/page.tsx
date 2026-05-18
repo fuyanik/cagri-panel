@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, FileAudio, Calendar, Headphones, User, Bookmark, Volume2, CheckCircle2, XCircle, AlertTriangle, Copy, Check, AlertCircle, Trash2 } from "lucide-react";
+import { ArrowLeft, FileAudio, Calendar, Headphones, User, Bookmark, Volume2, CheckCircle2, XCircle, AlertTriangle, Copy, Check, Info, Trash2 } from "lucide-react";
 import type { CallRecord, TranscriptLine } from "@/lib/types";
 
 function parseTranscriptLines(call: CallRecord): TranscriptLine[] | null {
@@ -204,6 +204,14 @@ export default function CallDetailPage() {
                       · {new Date(call.processedAt).toLocaleString("tr-TR")}
                     </span>
                   )}
+                  {(() => {
+                    const total = (call.step2Tokens ?? 0) + (call.step3Tokens ?? 0);
+                    return total > 0 ? (
+                      <span className="text-[11px] font-medium bg-violet-50 text-violet-500 rounded-md px-1.5 py-0.5">
+                        {total.toLocaleString("tr-TR")} token
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
 
                 {/* Borçlu bilgileri */}
@@ -312,15 +320,15 @@ export default function CallDetailPage() {
 
             <p className="text-sm text-gray-700 leading-relaxed mb-4">{call.compliance.summary}</p>
 
-            {/* Uyarılar (sarı) */}
+            {/* Notlar (mavi/informational) */}
             {(call.compliance.warnings?.length ?? 0) > 0 && (
               <div className="mb-4">
-                <p className="text-xs font-medium text-amber-600 mb-2">Dikkat Gerektiren Durumlar</p>
+                <p className="text-xs font-medium text-blue-500 mb-2">Notlar</p>
                 <div className="flex flex-col gap-1.5">
                   {call.compliance.warnings!.map((w, i) => (
-                    <div key={i} className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl px-4 py-2.5">
-                      <AlertCircle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
-                      <p className="text-xs text-amber-700">{w}</p>
+                    <div key={i} className="flex items-start gap-2 bg-gradient-to-br from-blue-50 to-white border border-blue-100/60 rounded-xl px-4 py-2.5">
+                      <Info className="w-3.5 h-3.5 text-blue-400 mt-0.5 shrink-0" />
+                      <p className="text-xs text-blue-700">{w}</p>
                     </div>
                   ))}
                 </div>
@@ -333,9 +341,9 @@ export default function CallDetailPage() {
                 <p className="text-xs font-medium text-green-600 mb-2">Uygun Davranışlar</p>
                 <div className="flex flex-col gap-1.5">
                   {call.compliance.positives.map((p, i) => (
-                    <div key={i} className="flex items-start gap-2">
+                    <div key={i} className="flex items-start gap-2 bg-gradient-to-br from-green-50 to-white border border-green-100/60 rounded-xl px-4 py-2.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-green-500 mt-0.5 shrink-0" />
-                      <p className="text-xs text-gray-600">{p}</p>
+                      <p className="text-xs text-green-700">{p}</p>
                     </div>
                   ))}
                 </div>
@@ -348,7 +356,7 @@ export default function CallDetailPage() {
                 <p className="text-xs font-medium text-red-500 mb-2">Tespit Edilen Sorunlar</p>
                 <div className="flex flex-col gap-2">
                   {call.compliance.violations.map((v, i) => (
-                    <div key={i} className={`rounded-xl px-4 py-3 ${v.critical ? "bg-red-50 border border-red-100" : "bg-gray-50"}`}>
+                    <div key={i} className={`rounded-xl px-4 py-3 ${v.critical ? "bg-gradient-to-br from-red-100 to-red-50 border border-red-200" : "bg-gradient-to-br from-red-50 to-white border border-red-100/60"}`}>
                       <div className="flex items-center gap-1.5 mb-1">
                         {v.critical
                           ? <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />

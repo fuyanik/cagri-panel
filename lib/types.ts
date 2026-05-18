@@ -49,6 +49,8 @@ export interface CallRecord {
   errorMessage?: string;
   processedAt?: Date;
   createdAt: Date;
+  step2Tokens?: number;
+  step3Tokens?: number;
 }
 
 export interface ProcessResult {

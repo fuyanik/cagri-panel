@@ -51,10 +51,27 @@ export default function FolderDetailPage() {
   const doneCalls = dayCalls.filter((c) => c.status === "completed" || c.status === "error");
   const savedCount = dayCalls.filter((c) => c.saved).length;
 
+  // Token istatistikleri
+  const callsWithTokens = dayCalls.filter(
+    (c) => c.step2Tokens !== undefined || c.step3Tokens !== undefined
+  );
+  const totalTokens = callsWithTokens.reduce(
+    (sum, c) => sum + (c.step2Tokens ?? 0) + (c.step3Tokens ?? 0),
+    0
+  );
+  const avgTokens =
+    callsWithTokens.length > 0 ? Math.round(totalTokens / callsWithTokens.length) : 0;
+
+  // skoru olmayan (notEvaluable veya compliance yok) → her zaman 999 (en yüksek gibi davran)
+  function sortScore(call: CallRecord): number {
+    if (!call.compliance || call.compliance.notEvaluable) return 999;
+    return call.compliance.score;
+  }
+
   const sortedDoneCalls: CallRecord[] = complianceSort
     ? [...doneCalls].sort((a, b) => {
-        const scoreA = a.compliance?.score ?? (complianceSort === "asc" ? 999 : -1);
-        const scoreB = b.compliance?.score ?? (complianceSort === "asc" ? 999 : -1);
+        const scoreA = sortScore(a);
+        const scoreB = sortScore(b);
         return complianceSort === "asc" ? scoreA - scoreB : scoreB - scoreA;
       })
     : doneCalls;
@@ -105,6 +122,29 @@ export default function FolderDetailPage() {
         {/* Stats */}
         <div className="mb-8">
           <StatsCards calls={dayCalls} wavTotal={wavCount} wavLoading={wavLoading} />
+
+          {callsWithTokens.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 bg-white rounded-2xl border border-gray-100">
+              <span className="text-[11px] font-medium bg-violet-50 text-violet-500 rounded-md px-2 py-0.5 shrink-0">
+                {callsWithTokens.length} çağrı
+              </span>
+              <span className="text-gray-200 hidden sm:inline">·</span>
+              <span className="text-xs text-gray-500">
+                <span className="font-semibold text-gray-700">
+                  {totalTokens.toLocaleString("tr-TR")}
+                </span>{" "}
+                token
+              </span>
+              <span className="text-gray-200 hidden sm:inline">·</span>
+              <span className="text-xs text-gray-500">
+                ortalama{" "}
+                <span className="font-semibold text-gray-700">
+                  {avgTokens.toLocaleString("tr-TR")}
+                </span>{" "}
+                token/çağrı
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Birleşik Pipeline */}

@@ -6,6 +6,16 @@
 ACAR HUKUK ve DANIŞMANLIK OFİSİ
 ÇAĞRI MERKEZİ YÖNERGESİ v1.1
 
+---
+## AI DEĞERLENDİRME DIŞI DURUMLAR
+
+Aşağıdaki görüşmeler AI tarafından puanlanmaz (notEvaluable):
+- Canlı asistan yoktur (yalnızca IVR / otomatik ses).
+- **Yanlış numara:** Aranan kişi hatta değil; hat sahibi aranan kişiyi tanımadığını belirtir
+  ("Tanımıyorum", "Yanlış numara", "Ben değilim" vb.) ve görüşme borç/dosya konuşulmadan biter.
+- Borçlu teyit edilemeden hat kesilir.
+---
+
 
 
 1- HGS’de param vardı, neden çekim işlemi yapılmamış?

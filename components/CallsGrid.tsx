@@ -77,6 +77,39 @@ function estimateDuration(call: CallRecord): string | null {
   return secs > 0 ? `~${mins}dk ${secs}sn` : `~${mins}dk`;
 }
 
+function formatCheckedAt(checkedAt: unknown): string {
+  if (!checkedAt) return "";
+  let date: Date | null = null;
+  if (checkedAt instanceof Date) {
+    date = checkedAt;
+  } else if (
+    typeof checkedAt === "object" &&
+    checkedAt !== null &&
+    "seconds" in checkedAt
+  ) {
+    date = new Date((checkedAt as { seconds: number }).seconds * 1000);
+  }
+  if (!date || isNaN(date.getTime())) return "";
+  const months = ["Oca","Şub","Mar","Nis","May","Haz","Tem","Ağu","Eyl","Eki","Kas","Ara"];
+  const d = date.getDate();
+  const m = months[date.getMonth()];
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  const ss = String(date.getSeconds()).padStart(2, "0");
+  return `${d} ${m} ${hh}:${mm}:${ss}`;
+}
+
+function shortFileName(name: string): string {
+  const parts = name.split("-");
+  if (parts.length >= 2) return parts.slice(0, 2).join("-") + "-";
+  return name;
+}
+
+function fmtTokens(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
+
 function formatFolderDate(dateStr: string): string {
   if (!dateStr || dateStr.length !== 8) return dateStr;
   const year = parseInt(dateStr.slice(0, 4));
@@ -133,13 +166,28 @@ function CallCard({ call, index }: { call: CallRecord; index: number }) {
         <FileAudio className="w-4 h-4 text-[#0071E3]" />
       </div>
 
-      {/* Dosya adı + asistan adı + hata */}
+      {/* Dosya adı + asistan adı + token rozetleri + hata */}
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-gray-900 truncate">{call.fileName}</p>
-        <div className="flex items-center gap-2 mt-0.5">
+        <p
+          className="text-sm font-medium text-gray-900 font-mono truncate"
+          title={call.fileName}
+        >
+          {shortFileName(call.fileName)}
+        </p>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
           {call.agentName && (
             <span className={`text-[11px] font-medium ${agentColor(call.agentName)}`}>
               {call.agentName}
+            </span>
+          )}
+          {call.step2Tokens !== undefined && (
+            <span className="text-[10px] font-medium bg-violet-50 text-violet-500 rounded-md px-1.5 py-0.5 shrink-0">
+              S2 {fmtTokens(call.step2Tokens)}
+            </span>
+          )}
+          {call.step3Tokens !== undefined && (
+            <span className="text-[10px] font-medium bg-sky-50 text-sky-500 rounded-md px-1.5 py-0.5 shrink-0">
+              S3 {fmtTokens(call.step3Tokens)}
             </span>
           )}
           {call.errorMessage && (
@@ -158,25 +206,35 @@ function CallCard({ call, index }: { call: CallRecord; index: number }) {
         {formatFolderDate(call.folderDate)}
       </span>
 
-      {/* Uygunluk skoru */}
+      {/* Uygunluk skoru + analiz saati */}
       {call.compliance && (
-        call.compliance.notEvaluable ? (
-          <span className="shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">
-            —
-          </span>
-        ) : (
-          <span
-            className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-              call.compliance.score >= 80
-                ? "bg-green-50 text-green-600"
-                : call.compliance.score >= 60
-                ? "bg-amber-50 text-amber-600"
-                : "bg-red-50 text-red-500"
-            }`}
-          >
-            {call.compliance.score}
-          </span>
-        )
+        <div className="shrink-0 flex flex-col items-end gap-0.5">
+          {call.compliance.notEvaluable ? (
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">
+              —
+            </span>
+          ) : (
+            <span
+              className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                call.compliance.score >= 80
+                  ? "bg-green-50 text-green-600"
+                  : call.compliance.score >= 60
+                  ? "bg-amber-50 text-amber-600"
+                  : "bg-red-50 text-red-500"
+              }`}
+            >
+              {call.compliance.score}
+            </span>
+          )}
+          {(() => {
+            const t = formatCheckedAt(call.compliance.checkedAt);
+            return t ? (
+              <span className="text-[10px] text-gray-400 hidden sm:block leading-none">
+                {t}
+              </span>
+            ) : null;
+          })()}
+        </div>
       )}
 
       {/* Durum */}

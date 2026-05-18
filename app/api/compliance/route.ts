@@ -61,7 +61,7 @@ async function runCompliance(count: number) {
       console.log(`[Compliance] ${entry.index}/${entry.total}: ${entry.fileName}`);
 
       try {
-        const result = await analyzeCompliance(data.transcript);
+        const { result } = await analyzeCompliance(data.transcript);
         await doc.ref.update({ compliance: result });
         entry.score = result.score;
         console.log(`[Compliance] Skor: ${result.score} — ${entry.fileName}`);
