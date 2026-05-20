@@ -93,6 +93,18 @@ async function runPipeline(folderName: string, folderId: string, count: number) 
     for (let i = 0; i < toProcess.length; i++) {
       const file = toProcess[i];
 
+      // SÜRE KONTROLÜ (Drive Metadata veya Dosya Boyutu üzerinden)
+      let durationSeconds = file.durationMillis ? parseInt(file.durationMillis) / 1000 : 0;
+      
+      // Eğer Drive durationMillis vermediyse, dosya boyutundan (size) tahmin et
+      // 8kHz 16-bit mono WAV = ~16 KB/sn. Biz güvenli tarafta kalmak için 32 KB/sn (stereo/16kHz) varsayalım.
+      // 30 saniye * 32 KB = ~960 KB. Yani 1 MB'dan küçük dosyalar muhtemelen 30 saniyeden kısadır.
+      if (durationSeconds === 0 && file.size) {
+        const sizeBytes = parseInt(file.size);
+        // Ortalama 16 KB/sn varsayımıyla süre tahmini
+        durationSeconds = sizeBytes / 16000; 
+      }
+
       const entry: PipelineLogEntry = {
         index: i + 1,
         total: toProcess.length,
@@ -105,6 +117,47 @@ async function runPipeline(folderName: string, folderId: string, count: number) 
       // Firestore'a processing kaydı oluştur
       const docRef = adminDb.collection("calls").doc();
       entry.callId = docRef.id;
+      
+      // Eğer 30 saniyeden kısaysa hiç Gemini'ye gönderme
+      if (durationSeconds > 0 && durationSeconds < 37) {
+        console.log(`[Pipeline] ${file.name} çok kısa (${durationSeconds}sn), atlanıyor.`);
+        
+        await docRef.set({
+          fileName: file.name,
+          driveFileId: file.id,
+          folderDate: folderName,
+          fileSizeBytes: file.size ? parseInt(file.size) : null,
+          transcript: "",
+          transcriptLines: [],
+          status: "completed",
+          createdAt: new Date(),
+          processedAt: new Date(),
+          estimatedDurationSeconds: durationSeconds,
+          compliance: {
+            score: 0,
+            compliant: false,
+            notEvaluable: true,
+            summary: `Kısa görüşme (Drive süresi: ${Math.round(durationSeconds)}sn), analiz edilmedi.`,
+            violations: [],
+            warnings: [],
+            positives: [],
+            checkedAt: new Date(),
+          },
+          step2Tokens: 0,
+          step3Tokens: 0,
+        });
+
+        entry.steps.forEach(s => s.status = "done");
+        entry.steps[0].detail = `Atlandı (${Math.round(durationSeconds)}sn)`;
+        entry.steps[1].detail = "Değerlendirilemez";
+        entry.score = 0;
+        entry.notEvaluable = true;
+        entry.step2Tokens = 0;
+        entry.step3Tokens = 0;
+
+        continue; // Sonraki dosyaya geç
+      }
+
       await docRef.set({
         fileName: file.name,
         driveFileId: file.id,

@@ -2,8 +2,19 @@ import { google } from "googleapis";
 import { getServiceAccount } from "./service-account";
 import type { DriveFile } from "./types";
 
-// Gösterilecek günlük klasörler (YYYYMMDD formatı)
-const ALLOWED_DATES = ["20260508", "20260511", "20260512", "20260513", "20260514", "20260515"];
+// Son 60 günün YYYYMMDD listesini dinamik üret
+function getRecentDates(days = 60): Set<string> {
+  const dates = new Set<string>();
+  const d = new Date();
+  for (let i = 0; i < days; i++) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    dates.add(`${yyyy}${mm}${dd}`);
+    d.setDate(d.getDate() - 1);
+  }
+  return dates;
+}
 
 export interface DailyFolder {
   id: string;
@@ -55,9 +66,10 @@ export async function listDailyFolders(parentFolderId: string): Promise<DailyFol
     pageSize: 100,
   });
 
+  const recentDates = getRecentDates(60);
   const folders = response.data.files || [];
   return folders
-    .filter((f) => f.name && ALLOWED_DATES.includes(f.name))
+    .filter((f) => f.name && /^\d{8}$/.test(f.name) && recentDates.has(f.name))
     .map((f) => {
       const { date, dayName } = formatFolderDate(f.name!);
       return { id: f.id!, name: f.name!, date, dayName };
@@ -70,7 +82,7 @@ export async function listWavFiles(folderId: string): Promise<DriveFile[]> {
 
   const response = await drive.files.list({
     q: `'${folderId}' in parents and trashed = false`,
-    fields: "files(id, name, mimeType, size)",
+    fields: "files(id, name, mimeType, size, videoMediaMetadata)",
     pageSize: 1000,
   });
 
@@ -82,6 +94,7 @@ export async function listWavFiles(folderId: string): Promise<DriveFile[]> {
       name: f.name!,
       mimeType: f.mimeType || "audio/wav",
       size: f.size || undefined,
+      durationMillis: f.videoMediaMetadata?.durationMillis || undefined,
     }));
 }
 

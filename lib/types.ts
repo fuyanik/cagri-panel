@@ -69,4 +69,5 @@ export interface DriveFile {
   name: string;
   mimeType: string;
   size?: string;
+  durationMillis?: string;
 }

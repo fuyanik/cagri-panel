@@ -235,6 +235,7 @@ export async function analyzeCompliance(transcript: string): Promise<{ result: C
 
   const model = genAI.getGenerativeModel({
     model: "gemini-2.5-flash",
+    systemInstruction: `Sen Acar Hukuk Bürosu için çalışan bir kalite kontrol uzmanısın. Aşağıdaki yönergeye göre çağrıları değerlendireceksin:\n\n${yonerge}`,
     generationConfig: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -270,14 +271,11 @@ export async function analyzeCompliance(transcript: string): Promise<{ result: C
     },
   });
 
-  const prompt = `Aşağıdaki çağrı merkezi görüşmesini yönergeye göre değerlendir.
+  const prompt = `Aşağıdaki çağrı merkezi görüşmesini değerlendir.
 
 ÖNEMLİ: Tüm çıktılar (summary, violations, warnings, positives) TÜRKÇE olmalıdır.
 
 BAĞLAM: Acar Hukuk Ofisi icra/otoyol ihlali çağrı merkezi. Asistan borçluyu arar veya borçlu arar.
-
-MİNİ YÖNERGE (AI ODAKLI):
-${yonerge}
 
 TRANSKRİPT:
 ${transcript}
@@ -414,9 +412,21 @@ KURAL: transcriptLines dizisi konuşma sırasına göre sıralı olmalı.`;
     { text: prompt },
   ]);
 
+  // PROHIBITED_CONTENT veya diğer engellemeler için kontrol
+  if (result.response.promptFeedback?.blockReason) {
+    throw new Error(`Gemini Engelledi: ${result.response.promptFeedback.blockReason}`);
+  }
+
+  let text = "";
+  try {
+    text = result.response.text().trim();
+  } catch (err) {
+    throw new Error(`Gemini yanıtı okunamadı (Muhtemelen engellendi): ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   const step2Tokens = countTokens(result.response.usageMetadata);
 
-  const parsed = JSON.parse(result.response.text().trim()) as {
+  const parsed = JSON.parse(text) as {
     transcriptLines: Array<{ speaker: string; text: string }>;
     agentName: string;
     subjectInfo: { name?: string; tcNo?: string; icraOffice?: string; fileNo?: string };

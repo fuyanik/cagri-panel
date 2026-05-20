@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, FileAudio, Calendar, Headphones, User, Bookmark, Volume2, CheckCircle2, XCircle, AlertTriangle, Copy, Check, Info, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, FileAudio, Calendar, Headphones, User, Bookmark, Volume2, CheckCircle2, XCircle, AlertTriangle, Copy, Check, Info, Trash2, CheckCircle, Clock, Loader2 } from "lucide-react";
 import type { CallRecord, TranscriptLine } from "@/lib/types";
+import { useCalls } from "@/providers/CallsProvider";
 
 function parseTranscriptLines(call: CallRecord): TranscriptLine[] | null {
   if (call.transcriptLines && Array.isArray(call.transcriptLines) && call.transcriptLines.length > 0) {
@@ -74,6 +76,8 @@ export default function CallDetailPage() {
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  const { calls: allCalls } = useCalls();
 
   async function handleDelete() {
     if (!call) return;
@@ -172,13 +176,162 @@ export default function CallDetailPage() {
     return `${dateName} ${dayName.charAt(0).toUpperCase() + dayName.slice(1)}`;
   }
 
+  // Sidebar için o günün çağrıları
+  const folderDate = call.folderDate;
+  function checkedAtSeconds(checkedAt: unknown): number {
+    if (!checkedAt) return 0;
+    const raw = checkedAt as Record<string, unknown>;
+    if (typeof raw.seconds === "number") return raw.seconds;
+    if (typeof checkedAt === "string") return new Date(checkedAt).getTime() / 1000;
+    return 0;
+  }
+
+  const dayCalls = allCalls
+    .filter((c) => c.folderDate === folderDate)
+    .sort((a, b) =>
+      checkedAtSeconds(b.compliance?.checkedAt) - checkedAtSeconds(a.compliance?.checkedAt)
+    );
+
+  function shortName(fileName: string) {
+    const parts = fileName.split("-");
+    if (parts.length >= 2) return parts.slice(0, 2).join("-") + "-";
+    return fileName;
+  }
+
+  function fmtTokens(n: number) {
+    return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+  }
+
+  function fmtCheckedAt(checkedAt: unknown): string {
+    if (!checkedAt) return "";
+    let date: Date | null = null;
+    if (typeof checkedAt === "object" && checkedAt !== null && "seconds" in checkedAt) {
+      date = new Date((checkedAt as { seconds: number }).seconds * 1000);
+    } else if (typeof checkedAt === "string") {
+      date = new Date(checkedAt);
+    }
+    if (!date || isNaN(date.getTime())) return "";
+    const months = ["Oca","Şub","Mar","Nis","May","Haz","Tem","Ağu","Eyl","Eki","Kas","Ara"];
+    return `${date.getDate()} ${months[date.getMonth()]} ${String(date.getHours()).padStart(2,"0")}:${String(date.getMinutes()).padStart(2,"0")}`;
+  }
+
+  function estimateDur(c: CallRecord): string | null {
+    const seconds = c.estimatedDurationSeconds ?? (() => {
+      const text = c.transcript || (c.transcriptLines?.map((l) => l.text).join(" ") ?? "");
+      if (text.length < 10) return null;
+      return Math.round((text.trim().split(/\s+/).length / 130) * 60);
+    })();
+    if (!seconds) return null;
+    if (seconds < 60) return `~${seconds}sn`;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return secs > 0 ? `~${mins}dk ${secs}sn` : `~${mins}dk`;
+  }
+
   return (
-    <div className="min-h-screen bg-[#F5F5F7]">
-      <div className="max-w-3xl mx-auto px-6 py-12">
-        {/* Back */}
+    <div className="min-h-screen bg-[#F5F5F7] flex">
+      {/* ── Sol Sidebar ── */}
+      <aside className="hidden lg:flex flex-col fixed left-0 top-0 h-screen w-72 bg-white border-r border-gray-100 z-10">
+        {/* Başlık */}
+        <div className="px-4 pt-6 pb-3 border-b border-gray-100 shrink-0">
+          <Link
+            href={`/folders/${folderDate}`}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-900 transition-colors mb-3"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Klasöre dön
+          </Link>
+          <p className="text-sm font-semibold text-gray-800 leading-tight">{getFolderLabel(folderDate)}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">{dayCalls.length} çağrı</p>
+        </div>
+
+        {/* Çağrı listesi */}
+        <div className="flex-1 overflow-y-auto">
+          {dayCalls.map((c, idx) => {
+            const isActive = c.id === id;
+            const score = c.compliance && !c.compliance.notEvaluable ? c.compliance.score : null;
+            const dur = estimateDur(c);
+            const checkedAt = c.compliance ? fmtCheckedAt(c.compliance.checkedAt) : "";
+            const s2 = c.step2Tokens !== undefined ? fmtTokens(c.step2Tokens) : null;
+            const s3 = c.step3Tokens !== undefined ? fmtTokens(c.step3Tokens) : null;
+            const isClickable = c.status === "completed";
+
+            return (
+              <div
+                key={c.id}
+                onClick={() => isClickable && router.push(`/calls/${c.id}`)}
+                className={`px-4 py-3 border-b border-gray-100 last:border-0 transition-colors ${
+                  isActive
+                    ? "bg-blue-50 border-l-2 border-l-[#0071E3]"
+                    : isClickable
+                    ? "hover:bg-gray-50 cursor-pointer"
+                    : ""
+                }`}
+              >
+                {/* Dosya adı + sıra */}
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <p className="text-xs font-semibold text-gray-800 font-mono truncate">
+                    {shortName(c.fileName)}
+                  </p>
+                  <span className="text-[10px] text-gray-400 shrink-0">#{dayCalls.length - idx}</span>
+                </div>
+
+                {/* Agent + tokenlar */}
+                <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                  {c.agentName && (
+                    <span className="text-[10px] font-medium text-blue-600">{c.agentName}</span>
+                  )}
+                  {s2 && (
+                    <span className="text-[10px] bg-violet-50 text-violet-500 rounded px-1">S2 {s2}</span>
+                  )}
+                  {s3 && (
+                    <span className="text-[10px] bg-sky-50 text-sky-500 rounded px-1">S3 {s3}</span>
+                  )}
+                  {dur && (
+                    <span className="text-[10px] text-gray-400">{dur}</span>
+                  )}
+                </div>
+
+                {/* Skor + saat + durum */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    {score !== null ? (
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                        score >= 80 ? "bg-green-50 text-green-600" :
+                        score >= 60 ? "bg-amber-50 text-amber-600" :
+                        "bg-red-50 text-red-500"
+                      }`}>{score}</span>
+                    ) : c.compliance?.notEvaluable ? (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-400">—</span>
+                    ) : null}
+                    {checkedAt && (
+                      <span className="text-[10px] text-gray-400">{checkedAt}</span>
+                    )}
+                  </div>
+                  {/* Durum ikonu */}
+                  {c.status === "completed" ? (
+                    <CheckCircle className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                  ) : c.status === "error" ? (
+                    <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                  ) : c.status === "processing" ? (
+                    <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin shrink-0" />
+                  ) : (
+                    <Clock className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </aside>
+
+      {/* ── Ana İçerik ── */}
+      <div className="flex-1 lg:ml-72">
+        <div className="max-w-3xl mx-auto px-6 py-12">
+        {/* Back (mobil) */}
         <button
           onClick={() => router.push(`/folders/${call.folderDate}`)}
-          className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 bg-white shadow-sm hover:shadow px-4 py-2.5 rounded-xl transition-all cursor-pointer mb-8"
+          className="lg:hidden inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 bg-white shadow-sm hover:shadow px-4 py-2.5 rounded-xl transition-all cursor-pointer mb-8"
         >
           <ArrowLeft className="w-4 h-4" />
           Geri Dön — {getFolderLabel(call.folderDate)}
@@ -407,6 +560,7 @@ export default function CallDetailPage() {
               </p>
             )}
           </div>
+        </div>
         </div>
       </div>
     </div>

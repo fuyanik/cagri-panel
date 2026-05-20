@@ -191,7 +191,20 @@ function CallCard({ call, index }: { call: CallRecord; index: number }) {
             </span>
           )}
           {call.errorMessage && (
-            <p className="text-xs text-red-400 line-clamp-1">{call.errorMessage}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs text-red-400 line-clamp-1">{call.errorMessage}</p>
+              {(call.errorMessage.includes("Gemini Engelledi") || call.errorMessage.includes("Gemini yanıtı okunamadı")) && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    router.push(`/calls/${call.id}`);
+                  }}
+                  className="text-[10px] font-medium text-[#0071E3] hover:underline whitespace-nowrap"
+                >
+                  Görüşmeye git
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
