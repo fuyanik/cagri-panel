@@ -35,12 +35,12 @@ export default function Sidebar() {
       <div className="px-6 py-5 border-b border-gray-50">
         <div className="flex items-center gap-3">
           {/* Logo: public/logo.png varsa göster, yoksa metin */}
-          <div className="w-9 h-9 rounded-lg bg-[#1B3A6B] flex items-center justify-center shrink-0 overflow-hidden">
+          <div className="w-14 h-14 rounded-xl bg-[#1B3A6B] flex items-center justify-center shrink-0 overflow-hidden">
             <Image
-              src="/logo-2.png"
+              src="https://www.acarhd.com/themes/default/assets/img/logo.png"
               alt="Acar"
-              width={36}
-              height={36}
+              width={56}
+              height={56}
               className="object-contain"
               onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
             />
