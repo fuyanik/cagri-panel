@@ -1,5 +1,4 @@
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
-import { AssemblyAI } from "assemblyai";
 import { readFileSync } from "fs";
 import { join } from "path";
 import type { TranscriptLine, ComplianceResult } from "./types";
@@ -20,16 +19,6 @@ function getGeminiClient() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY tanımlanmamış");
   return new GoogleGenerativeAI(apiKey);
-}
-
-let _aaiClient: AssemblyAI | null = null;
-function getAAIClient(): AssemblyAI {
-  if (!_aaiClient) {
-    const apiKey = process.env.ASSEMBLYAI_API_KEY;
-    if (!apiKey) throw new Error("ASSEMBLYAI_API_KEY tanımlanmamış");
-    _aaiClient = new AssemblyAI({ apiKey });
-  }
-  return _aaiClient;
 }
 
 function loadYonergeMini(): string {
@@ -61,62 +50,6 @@ export type StepCallback = (
   detail?: string
 ) => void;
 
-// ─────────────────────────────────────────────────────────────
-// ADIM 1: Ses → Konuşmacı Etiketli Transkript  (AssemblyAI Universal-2)
-// ─────────────────────────────────────────────────────────────
-export interface AAIUtterance {
-  speaker: string; // "A", "B", "C"...
-  text: string;
-}
-
-export async function assemblyaiDiarize(
-  audioBuffer: Buffer
-): Promise<AAIUtterance[]> {
-  const client = getAAIClient();
-
-  const transcript = await client.transcripts.transcribe({
-    audio: audioBuffer,
-    speech_models: ["universal-2"],
-    language_code: "tr",
-    speaker_labels: true,
-    speakers_expected: 2,
-    word_boost: [
-      "Acar Hukuk",
-      "Acar Hukuk Bürosu",
-      "icra",
-      "icra takip",
-      "icra müdürlüğü",
-      "ihlal",
-      "otoyol",
-      "Avrasya",
-      "Avrasya Tüneli",
-      "Karayolları",
-      "vekalet ücreti",
-      "tahsil harcı",
-      "haciz",
-      "banka blokesi",
-      "tebligat",
-    ],
-    boost_param: "high",
-  });
-
-  if (transcript.status === "error") {
-    throw new Error(`AssemblyAI hata: ${transcript.error}`);
-  }
-
-  if (!transcript.utterances || transcript.utterances.length === 0) {
-    return [{ speaker: "A", text: transcript.text ?? "" }];
-  }
-
-  return transcript.utterances.map((u) => ({
-    speaker: u.speaker ?? "A",
-    text: u.text ?? "",
-  }));
-}
-
-// ─────────────────────────────────────────────────────────────
-// ADIM 2: speaker_A/B → Asistan/Borçlu atama + Bilgi Çıkarımı (Gemini — metin)
-// ─────────────────────────────────────────────────────────────
 export interface TranscriptResult {
   transcriptLines: TranscriptLine[];
   transcript: string;
@@ -131,103 +64,8 @@ export interface TranscriptResult {
   step2Tokens?: number;
 }
 
-export async function assignSpeakersAndExtract(
-  utterances: AAIUtterance[]
-): Promise<TranscriptResult> {
-  const genAI = getGeminiClient();
-
-  // AssemblyAI etiketli metni Gemini'ye ver — sadece ilk ~40 segmenti gönder,
-  // konuşmacı tespiti için yeterli; tamamı gereksiz output yaratıyor
-  const sampleText = utterances
-    .slice(0, 40)
-    .map((u) => `speaker_${u.speaker}: ${u.text}`)
-    .join("\n");
-
-  const model = genAI.getGenerativeModel({
-    model: "gemini-2.5-flash",
-    generationConfig: {
-      responseMimeType: "application/json",
-      // @ts-expect-error thinkingConfig henüz SDK tiplerinde yok ama API destekliyor
-      thinkingConfig: { thinkingBudget: 0 },
-      // transcriptLines burada YOK — kodla üretilecek
-      responseSchema: {
-        type: SchemaType.OBJECT,
-        properties: {
-          assistantSpeaker: { type: SchemaType.STRING },
-          agentName: { type: SchemaType.STRING },
-          subjectInfo: {
-            type: SchemaType.OBJECT,
-            properties: {
-              name: { type: SchemaType.STRING },
-              tcNo: { type: SchemaType.STRING },
-              icraOffice: { type: SchemaType.STRING },
-              fileNo: { type: SchemaType.STRING },
-            },
-          },
-        },
-        required: ["assistantSpeaker", "agentName", "subjectInfo"],
-      },
-    },
-  });
-
-  const prompt = `Aşağıda bir Türkçe çağrı merkezi görüşmesinden segment örnekleri var.
-Konuşmacılar speaker_A, speaker_B gibi etiketlenmiş.
-Bunlardan biri "Asistan" (Acar Hukuk Bürosu çalışanı), diğeri "Borçlu".
-
-İKİ GÖREV:
-
-GÖREV 1 — KONUŞMACI TESPİTİ:
-- Hangi speaker'ın Asistan olduğunu belirle (Acar Hukuk'u tanıtan, icra/ödeme bilgisi veren, kendini tanıtan taraf).
-- assistantSpeaker: o speaker'ın harfini yaz ("A", "B" vb.).
-- Tespit edilemezse "A" yaz.
-
-GÖREV 2 — BİLGİ ÇIKARIMI:
-- agentName: Asistanın adı (bulunamazsa "")
-- subjectInfo.name: Borçlunun adı soyadı (bulunamazsa "")
-- subjectInfo.tcNo: TC kimlik no — 11 hane, 0 ile başlamaz, parçalıysa birleştir (bulunamazsa "")
-- subjectInfo.icraOffice: İcra müdürlüğü adı (bulunamazsa "")
-- subjectInfo.fileNo: Dosya/esas numarası (bulunamazsa "")
-
-SEGMENTLER:
-${sampleText}`;
-
-  const result = await model.generateContent(prompt);
-  const step2Tokens = countTokens(result.response.usageMetadata);
-  const parsed = JSON.parse(result.response.text().trim()) as {
-    assistantSpeaker: string;
-    agentName: string;
-    subjectInfo: { name?: string; tcNo?: string; icraOffice?: string; fileNo?: string };
-  };
-
-  const assistantSpeaker = parsed.assistantSpeaker ?? "A";
-
-  // transcriptLines kodla üret — model artık bunları yazmıyor
-  const transcriptLines: TranscriptLine[] = utterances.map((u) => ({
-    speaker: u.speaker === assistantSpeaker ? "Asistan" : "Borçlu",
-    text: u.text,
-  }));
-  const transcript = transcriptLines.map((l) => `${l.speaker}: ${l.text}`).join("\n");
-
-  const rawTc = (parsed.subjectInfo?.tcNo ?? "").replace(/\D/g, "");
-  const validTc = rawTc.length === 11 && rawTc[0] !== "0" ? rawTc : undefined;
-
-  return {
-    transcriptLines,
-    transcript,
-    agentName: parsed.agentName ?? "",
-    estimatedDurationSeconds: estimateDurationSeconds(transcript),
-    subjectInfo: {
-      name: parsed.subjectInfo?.name || undefined,
-      tcNo: validTc,
-      icraOffice: parsed.subjectInfo?.icraOffice || undefined,
-      fileNo: parsed.subjectInfo?.fileNo || undefined,
-    },
-    step2Tokens,
-  };
-}
-
 // ─────────────────────────────────────────────────────────────
-// ADIM 3: Transkript → Yönerge Uygunluk Analizi (Gemini — metin)
+// Yönerge uygunluk analizi (Gemini — metin)
 // ─────────────────────────────────────────────────────────────
 export async function analyzeCompliance(transcript: string): Promise<{ result: ComplianceResult; tokens?: number }> {
   const genAI = getGeminiClient();
@@ -340,7 +178,7 @@ ALINTI ZORUNLULUĞU: Her violations kaydında Asistan'ın gerçek sözünü alı
 }
 
 // ─────────────────────────────────────────────────────────────
-// ADIM 1+2 BİRLEŞİK: Ses → Transkript + Konuşmacı Atama (Gemini Audio)
+// Ses → Transkript + Konuşmacı atama (Gemini Audio)
 // ─────────────────────────────────────────────────────────────
 export async function geminiTranscribeAndAssign(
   audioBuffer: Buffer

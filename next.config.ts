@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["firebase-admin", "googleapis", "assemblyai", "@deepgram/sdk"],
+  serverExternalPackages: ["firebase-admin", "googleapis"],
   images: {
     remotePatterns: [
       {

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Bookmark, LogOut, User, Folder, LayoutDashboard, ChevronDown } from "lucide-react";
+import { Bookmark, LogOut, User, Folder, LayoutDashboard, ChevronDown, BarChart2 } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useFolders } from "@/providers/FoldersProvider";
 import { signOut, sendPasswordResetEmail } from "firebase/auth";
@@ -68,12 +68,22 @@ export default function Sidebar() {
 
         <Link
           href="/saved"
-          className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors mb-3 ${
+          className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors mb-1 ${
             isActive("/saved") ? "bg-[#0071E3] text-white" : "text-gray-600 hover:bg-gray-50"
           }`}
         >
           <Bookmark className="w-4 h-4 shrink-0" />
           Kaydedilenler
+        </Link>
+
+        <Link
+          href="/analyses"
+          className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors mb-3 ${
+            isActive("/analyses") ? "bg-[#0071E3] text-white" : "text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          <BarChart2 className="w-4 h-4 shrink-0" />
+          Analizler
         </Link>
 
         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 mb-2">Günlük Klasörler</p>

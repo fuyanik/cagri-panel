@@ -126,7 +126,7 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-screen bg-[#F5F5F7] flex overflow-x-hidden">
       {/* ── Sol Sidebar ── */}
-      <aside className="hidden lg:flex flex-col fixed left-0 top-0 h-screen w-[21rem] bg-white border-r border-gray-100 z-10">
+      <aside className="hidden lg:flex flex-col fixed left-0 top-0 h-screen w-[19rem] bg-white border-r border-gray-100 z-10">
         {/* Başlık */}
         <div className="px-4 pt-6 pb-3 border-b border-gray-100 shrink-0">
           {folderDate && (
@@ -242,7 +242,7 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* ── Ana İçerik ── */}
-      <div className="flex-1 lg:ml-[21rem] min-w-0">
+      <div className="flex-1 lg:ml-[19rem] min-w-0">
         {children}
       </div>
     </div>
