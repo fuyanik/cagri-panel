@@ -6,8 +6,7 @@ import CallsGrid from "@/components/CallsGrid";
 import { useCalls } from "@/providers/CallsProvider";
 
 export default function SavedPage() {
-  const { calls, loading, error } = useCalls();
-  const saved = calls.filter((c) => c.saved);
+  const { savedCalls: saved, savedLoading: loading, savedError: error } = useCalls();
 
   return (
     <div className="min-h-screen bg-[#F5F5F7]">
