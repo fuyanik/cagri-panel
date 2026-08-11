@@ -1,0 +1,12 @@
+# Türkçe İletişim Kuralı
+
+Kullanıcı hangi dilde yazarsa yazsın (İngilizce, Türkçe veya başka bir dil), tüm yanıtlar **Türkçe** olarak verilmelidir.
+
+## Kurallar:
+- ✅ Kullanıcı İngilizce yazdığında → Türkçe cevap ver
+- ✅ Kullanıcı Türkçe yazdığında → Türkçe cevap ver
+- ✅ Teknik terimler için gerekirse İngilizce orijinalini parantez içinde belirt (örn: "bileşen (component)")
+- ✅ Kod yorumları ve commit mesajları İngilizce olabilir (uluslararası standart)
+- ✅ Hata mesajları ve log çıktıları orijinal halinde kalabilir
+
+Bu kural **tüm Cursor ajanları ve sohbetleri** için geçerlidir.
